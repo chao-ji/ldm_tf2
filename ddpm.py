@@ -37,12 +37,7 @@ class DDPM(object):
     elif schedule == "sqrt":
       pass
 
-
-    #print(self._linear_start, self._linear_end)
-    #print("betas")
-    #print(betas)
     alphas = 1. - betas
-
 
     alphas_cumprod = np.cumprod(alphas, axis=0)
     alphas_cumprod_prev = np.append(1., alphas_cumprod[:-1])
@@ -125,5 +120,4 @@ class DiffusionWrapper(object):
       
 if __name__ == "__main__":
   ddpm = DDPM()
-
 

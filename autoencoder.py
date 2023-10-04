@@ -1,4 +1,8 @@
+import numpy as np
 import tensorflow as tf
+
+from distribution import DiagonalGaussian
+from quantize import VectorQuantizer
 
 GROUP_NORM_EPSILON = 1e-6
 
@@ -252,7 +256,6 @@ class Encoder(tf.keras.layers.Layer):
     for m in self._down:
       outputs = m(outputs, training=training)
       hiddens.append(outputs)
-
     outputs = self._middle(outputs)
     outputs = self._conv_out(self._activation(self._group_norm(outputs)))
     return outputs
@@ -330,13 +333,27 @@ class Decoder(tf.keras.layers.Layer):
     return outputs
 
 
-if __name__ == "__main__":
-  import numpy as np
-  scale_factor = 0.18215
-  inputs = np.load("/home/chaoji/work/genmo/diffusion/latent-diffusion/samples_ddim.npy").transpose(0, 2, 3, 1)
 
-  post_quant_conv = tf.keras.layers.Dense(4)
-  decoder = Decoder(
+class AutoencoderKL(tf.keras.layers.Layer):
+  def __init__(self, z_channels=4): 
+    super(AutoencoderKL, self).__init__()
+    self._encoder = Encoder(
+      channels=128,
+      num_blocks=2,
+      latent_channels=z_channels,
+      attention_resolutions=(),
+      dropout_rate=0.0,
+      multipliers=(1, 2, 4, 4),
+      resample_with_conv=True,
+      double_latent_channels=True,
+      use_linear_attention=False,
+      attention_type="vanilla",
+      activation=tf.nn.swish,
+    )
+    self._quant_conv = tf.keras.layers.Dense(z_channels * 2)
+    self._post_quant_conv = tf.keras.layers.Dense(z_channels)
+
+    self._decoder = Decoder(
       channels=128,
       out_channels=3,
       num_blocks=2,
@@ -344,91 +361,124 @@ if __name__ == "__main__":
       resample_with_conv=True,
       attention_resolutions=(),
       give_pre_end=False,
+    )
+    
+
+  def call(self, inputs, sample_posterior=True):
+    posterior = self.encode(inputs)
+    if sample_posterior:
+      latents = posterior.sample()
+    else:
+      latents = posterior.mode()
+
+    outputs = self.decode(latents)
+    return outputs, posterior
+
+
+  def encode(self, inputs):
+    outputs = self._encoder(inputs)
+    outputs = self._quant_conv(outputs)
+    mean, logvar = tf.split(outputs, 2, axis=-1)
+    posterior = DiagonalGaussian(mean, logvar)
+    return posterior
+
+  def decode(self, inputs):
+    outputs = self._post_quant_conv(inputs)
+    outputs = self._decoder(outputs, training=False)
+    return outputs
+
+  def get_last_layer(self):
+    return self._decoder._conv_out.weights[0]
+
+
+class VQModel(tf.keras.layers.Layer):
+  def __init__(self, z_channels=4):
+    """
+      double_z: false
+      z_channels: 4
+      resolution: 256
+      in_channels: 3
+      out_ch: 3
+      ch: 128
+      ch_mult:
+      - 1
+      - 2
+      - 2
+      - 4
+      num_res_blocks: 2
+      attn_resolutions:
+      - 32
+      dropout: 0.0
+    """
+    super(VQModel, self).__init__()
+    self._encoder = Encoder(
+      channels=128,
+      num_blocks=2,
+      latent_channels=z_channels,
+      attention_resolutions=(32,),
+      dropout_rate=0.0,
+      multipliers=(1, 2, 2, 4),
+      resample_with_conv=True,
+      double_latent_channels=False,
+      use_linear_attention=False,
+      attention_type="vanilla",
+      activation=tf.nn.swish,
+    )
+    self._quant_conv = tf.keras.layers.Dense(z_channels)
+    self._quantize = VectorQuantizer(vocab_size=16384, hidden_size=4, beta=0.25) 
+    self._post_quant_conv = tf.keras.layers.Dense(z_channels)
+    self._decoder = Decoder(
+      channels=128,
+      out_channels=3,
+      num_blocks=2,
+      multipliers=(1, 2, 2, 4),
+      resample_with_conv=True,
+      attention_resolutions=(32,),
+      give_pre_end=False,
+    )
+
+
+  def encode(self, x):
+    h = self._encoder(x)
+    h = self._quant_conv(h)
+    quant, emb_loss, info = self._quantize(h)
+    return quant, emb_loss, info
+
+  def decode(self, quant):
+    quant = self._post_quant_conv(quant)
+    dec = self._decoder(quant)
+    return dec
+
+  def call(self, inputs, return_pred_indices=False):
+    quant, diff, (_,_,ind) = self.encode(inputs)
+    dec = self.decode(quant)
+    if return_pred_indices:
+      return dec, diff, ind
+    return dec, diff
+
+  def get_last_layer(self):
+    return self._decoder._conv_out.weights[0]
+
+
+
+
+if __name__ == "__main__":
+  import numpy as np
+  scale_factor = 0.18215
+  inputs = np.load("/home/chaoji/work/genmo/diffusion/latent-diffusion/samples_ddim.npy").transpose(0, 2, 3, 1)
+
+
+  encoder = Encoder(
+      channels=128,
+      num_blocks=2,
+      latent_channels=4,
+      attention_resolutions=(),
+      dropout_rate=0.0,
+      multipliers=(1, 2, 4, 4),
+      resample_with_conv=True,
+      double_latent_channels=True,
+      use_linear_attention=False,
+      attention_type="vanilla",
+      activation=tf.nn.swish,      
   )
-
-  post_quant_conv(inputs)
-  decoder(inputs)
-
-  weights = []
-  sd = np.load("/home/chaoji/work/genmo/diffusion/latent-diffusion/sd.npy", allow_pickle=True).item()
-
-  weights.append(sd[f"first_stage_model.decoder.conv_in.weight"].transpose(2, 3, 1, 0))
-  weights.append(sd[f"first_stage_model.decoder.conv_in.bias"])
-
-  def get_block(weights, which, ):
-    weights.append(sd[f"first_stage_model.decoder.{which}.norm1.weight"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.norm1.bias"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.conv1.weight"].transpose(2, 3, 1, 0))
-    weights.append(sd[f"first_stage_model.decoder.{which}.conv1.bias"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.norm2.weight"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.norm2.bias"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.conv2.weight"].transpose(2, 3, 1, 0))
-    weights.append(sd[f"first_stage_model.decoder.{which}.conv2.bias"])      
-    if which in ("up.0.block.0", "up.1.block.0"):
-      weights.append(sd[f"first_stage_model.decoder.{which}.nin_shortcut.weight"].squeeze().T)
-      weights.append(sd[f"first_stage_model.decoder.{which}.nin_shortcut.bias"])
-    return weights
-
-  def get_attn(weights, which):
-    weights.append(sd[f"first_stage_model.decoder.{which}.norm.weight"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.norm.bias"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.q.weight"].squeeze().T)
-    weights.append(sd[f"first_stage_model.decoder.{which}.q.bias"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.k.weight"].squeeze().T)
-    weights.append(sd[f"first_stage_model.decoder.{which}.k.bias"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.v.weight"].squeeze().T)
-    weights.append(sd[f"first_stage_model.decoder.{which}.v.bias"])
-    weights.append(sd[f"first_stage_model.decoder.{which}.proj_out.weight"].squeeze().T)
-    weights.append(sd[f"first_stage_model.decoder.{which}.proj_out.bias"])
-    return weights
-
-  def get_upsample(weights, i):
-    weights.append(sd[f"first_stage_model.decoder.up.{i}.upsample.conv.weight"].transpose(2, 3, 1, 0))
-    weights.append(sd[f"first_stage_model.decoder.up.{i}.upsample.conv.bias"])
-    return weights
-
-  weights = get_block(weights, "mid.block_1")
-  weights = get_attn(weights, "mid.attn_1")
-  weights = get_block(weights, "mid.block_2")
-
-  weights = get_block(weights, "up.3.block.0")  
-  weights = get_block(weights, "up.3.block.1")  
-  weights = get_block(weights, "up.3.block.2")  
-
-  weights = get_upsample(weights, 3)
-
-  weights = get_block(weights, "up.2.block.0")
-  weights = get_block(weights, "up.2.block.1")
-  weights = get_block(weights, "up.2.block.2")
-
-  weights = get_upsample(weights, 2)
-
-  weights = get_block(weights, "up.1.block.0")
-  weights = get_block(weights, "up.1.block.1")
-  weights = get_block(weights, "up.1.block.2")
-
-  weights = get_upsample(weights, 1)
-
-  weights = get_block(weights, "up.0.block.0")
-  weights = get_block(weights, "up.0.block.1")
-  weights = get_block(weights, "up.0.block.2") 
-
-  weights.append(sd[f"first_stage_model.decoder.norm_out.weight"])
-  weights.append(sd[f"first_stage_model.decoder.norm_out.bias"])
-  weights.append(sd[f"first_stage_model.decoder.conv_out.weight"].transpose(2, 3, 1, 0))
-  weights.append(sd[f"first_stage_model.decoder.conv_out.bias"])
-
-  decoder.set_weights(weights)
-
-  post_quant_conv.set_weights([
-      sd["first_stage_model.post_quant_conv.weight"].squeeze().T,
-      sd["first_stage_model.post_quant_conv.bias"],]
-  )
-  inputs = 1 / scale_factor * inputs
-  inputs = post_quant_conv(inputs)  
-
-  print("\n" * 5)
-  outputs = decoder(inputs, training=False)
-
-
 

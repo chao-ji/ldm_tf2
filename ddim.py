@@ -3,6 +3,7 @@ import tensorflow as tf
 from ddpm import DDPM
 
 
+
 def make_ddim_timesteps(ddim_discr_method, num_ddim_timesteps, num_ddpm_timesteps):
     if ddim_discr_method == 'uniform':
         c = num_ddpm_timesteps // num_ddim_timesteps
@@ -208,18 +209,24 @@ if __name__ == "__main__":
 
   from unet import UNet, timestep_embedding
   from transformer import TransformerModel
-  
+  from ddpm import DiffusionWrapper
+  from ddpm import LatentDiffusion
+  from autoencoder import Decoder, Encoder, AutoencoderKL
 
-  vocab_size = 30522
-  transformer = TransformerModel(vocab_size,
+  transformer = TransformerModel(vocab_size=30522,
                encoder_stack_size=32,
                hidden_size=1280,
                num_heads=8,
                filter_size=1280*4,
                dropout_rate=0.1,)
-  #t_ckpt = tf.train.Checkpoint(transformer=transformer)
-  #t_ckpt.restore("transformer-1")
+  unet = UNet()
+  autoencoder = AutoencoderKL()
+  
 
+  ckpt = tf.train.Checkpoint(transformer=transformer, unet=unet, autoencoder=autoencoder)
+  ckpt.restore("txt2image-1").expect_partial()
+
+ 
   token_ids = np.asarray([[  101,  1037,  7865,  6071,  2003,  2652,  2858,  1010,  3514,  2006,
                            10683,   102,     0,     0,     0,     0,     0,     0,     0,     0,
                                0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
@@ -230,120 +237,24 @@ if __name__ == "__main__":
                                0,     0,     0,     0,     0,     0,     0]])
   ti = np.asarray([[101, 102] + [0] * 75])
   token_ids = tf.constant(np.vstack([np.tile(ti, [4, 1]), np.tile(token_ids, [4, 1])]))
-
-
-  print("\n" * 10)
-
-
-
-
-
-
-  
-
-
-
-
-
-
-
-  unet = UNet()
-  x = np.load("/home/chaoji/work/genmo/diffusion/latent-diffusion/x.npy").transpose(0, 2, 3, 1)
-  x = np.concatenate([x, x], axis=0)
-  t_emb = tf.constant([981] * 8)
-
-
-  #u_ckpt = tf.train.Checkpoint(unet=unet)
-  #u_ckpt.restore("unet-1")
-
-  print("\n" * 5)
-
-
-
-
-
-
-
-
-  from autoencoder import Decoder
-  post_quant_conv = tf.keras.layers.Dense(4)
-  decoder = Decoder(
-      channels=128,
-      out_channels=3,
-      num_blocks=2,
-      multipliers=(1, 2, 4, 4),
-      resample_with_conv=True,
-      attention_resolutions=(),
-      give_pre_end=False,
-  ) 
-
-
-  ckpt = tf.train.Checkpoint(transformer=transformer, unet=unet, post_quant_conv=post_quant_conv, decoder=decoder)
-  ckpt.restore("txt2image-1")
-
-  #p_ckpt = tf.train.Checkpoint(post_quant_conv=post_quant_conv)
-  #d_ckpt = tf.train.Checkpoint(decoder=decoder)
-
-  #p_ckpt.restore("post_quant_conv-1")
-  #d_ckpt.restore("decoder-1")
-
-  #post_quant_conv(z)
-  #decoder(z)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  context = transformer(token_ids, None)
-
-  outputs = unet(x, t_emb, context)
-
-
-
-  from ddpm import DiffusionWrapper
-  from ddpm import LatentDiffusion
+  context = transformer(token_ids)
 
 
   diffusion_wrapper = DiffusionWrapper(model=unet, conditioning_key="crossattn")
-
   latent_diffusion = LatentDiffusion(linear_start=0.00085, linear_end=0.012, cond_stage_model=transformer, diffusion_wrapper=diffusion_wrapper)
 
   sampler = DDIMSampler(model=latent_diffusion)
-  #print(context[:4].numpy().sum(), context[4:].numpy().sum())
   z = sampler.sample(conditioning=context[4:], unconditional_conditioning=context[:4])
   print("z", z.numpy().sum(), z.shape)
-
 
   scale_factor=0.18215
   inputs = 1 / scale_factor * z
 
+  outputs = autoencoder.decode(inputs)
 
-  inputs = post_quant_conv(inputs)
-
-  outputs = decoder(inputs, training=False)
 
   print("outputs", outputs.numpy().sum(), outputs.shape)
   outputs = outputs.numpy()
 
   images = np.clip((outputs+1.0)/2.0, a_min=0.0, a_max=1.0)
-
-
-
 
