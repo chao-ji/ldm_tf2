@@ -6,6 +6,13 @@ import tensorflow as tf
 
 class DiagonalGaussian(object):
   def __init__(self, mean, logvar, deterministic=False):
+    """
+    Args:
+      mean (Tensor of shape [batch_size, z_height, z_width, z_channels]): the
+        predicted mean of the latent variable.
+      logvar (Tensor of shape [batch_size, z_height, z_width, z_channels]): the
+        predicted logvar of the latent variable.
+    """
     self._mean = mean
     self._logvar = tf.clip_by_value(logvar, -30.0, 20.0)
     self._deterministic = deterministic

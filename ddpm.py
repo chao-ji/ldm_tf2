@@ -26,6 +26,7 @@ class DDPM(object):
   def create_schedule(self):
 
     if self._beta_schedule == "linear":
+      # $\beta_{t}$
       betas = np.linspace(self._linear_start ** 0.5, self._linear_end ** 0.5, self._num_steps, dtype="float64") ** 2
 
     elif schedule == "cosine":
@@ -37,17 +38,35 @@ class DDPM(object):
     elif schedule == "sqrt":
       pass
 
+    # $\alpha_{t}$
     alphas = 1. - betas
 
+    # $\bar{\alpha}_{t}$
     alphas_cumprod = np.cumprod(alphas, axis=0)
+
+    # $\bar{\alpha}_{t - 1}$
     alphas_cumprod_prev = np.append(1., alphas_cumprod[:-1])
 
+    # $\sqrt{\bar{\alpha}_{t}}$
     sqrt_alphas_cumprod = np.sqrt(alphas_cumprod)
+
+    ################
+    # $\sqrt{1 - \bar{\alpha}_{t}}$
     sqrt_one_minus_alphas_cumprod = np.sqrt(1. - alphas_cumprod)
+
+    # $\log 1 - \bar{\alpha}_{t}$
     log_one_minus_alphas_cumprod = np.log(1. - alphas_cumprod)
+
+    # $\sqrt{1 / \bar{\alpha}_{t}}$
     sqrt_recip_alphas_cumprod = np.sqrt(1. / alphas_cumprod)
+
+    # $\sqrt{1 / \bar{\alpha} - 1}$
     sqrt_recipm1_alphas_cumprod = np.sqrt(1. / alphas_cumprod - 1)
 
+    # interpolation between
+    # 1. $\tilde{\beta}_{t}, i.e. $\frac{1 - \bar{\alpha}_{t_1}}{\bar{\alpha}_{t}} \beta_{t}$
+    # 2. $\beta_{t}$
+    # in the DDPM paper
     posterior_variance = (1 - self._v_posterior) * betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod) + self._v_posterior * betas
  
 
@@ -116,8 +135,4 @@ class DiffusionWrapper(object):
       raise NotImplementedError()
 
     return out
-      
-      
-if __name__ == "__main__":
-  ddpm = DDPM()
-
+ 

@@ -167,7 +167,9 @@ class LPIPSWithDiscriminator(tf.keras.layers.Layer):
       disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
       loss = weighted_nll_loss + self.kl_weight * kl_loss + d_weight * disc_factor * g_loss
 
-      return loss
+      log = {"total_loss": loss, "kl_loss": kl_loss, "rec_loss": rec_loss, "nll_loss": nll_loss, "d_weight": d_weight, "disc_factor": disc_factor, "g_loss": g_loss}
+
+      return loss, log
     elif optimizer_idx == 1:
       # discriminator loss
       logits_real = self.discriminator(tf.stop_gradient(inputs))
@@ -175,7 +177,12 @@ class LPIPSWithDiscriminator(tf.keras.layers.Layer):
       #print("logits_real", logits_real.numpy().sum(), logits_real.shape)
       #print("logits_fake", logits_fake.numpy().sum(), logits_fake.shape)
       d_loss = self.disc_loss(logits_real, logits_fake)
-      return d_loss
+
+      disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
+      d_loss = d_loss * disc_factor
+
+      log = {"disc_loss": d_loss, "logits_real": logits_real, "logits_fake": logits_fake}
+      return d_loss, log
     else:
       raise ValueError("adfadsf")
 
@@ -259,14 +266,20 @@ class VQLPIPSWithDiscriminator(tf.keras.layers.Layer):
 
       disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
       loss = nll_loss + d_weight * disc_factor * g_loss + self.codebook_weight * tf.reduce_mean(codebook_loss)
-      return loss
+
+      ae_log = {"total_loss": loss, "quant_loss": tf.reduce_mean(codebook_loss), "nll_loss": nll_loss, "rec_loss": rec_loss, "p_loss": p_loss, "d_weight": d_weight, "disc_factor": disc_factor, "g_loss": g_loss}
+
+      return loss, ae_log
     elif optimizer_idx == 1:
       logits_real = self.discriminator(tf.stop_gradient(inputs))
       logits_fake = self.discriminator(tf.stop_gradient(reconstructions)) 
 
       disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
       d_loss = disc_factor * self.disc_loss(logits_real, logits_fake)
-      return d_loss
+
+      d_log = {"d_loss": d_loss, "logits_real": logits_real, "logits_fake": logits_fake}
+
+      return d_loss, d_log
     else:
       raise ValueError("adfadsf")
 
@@ -287,7 +300,7 @@ if __name__ == "__main__":
   inputs = images.astype("float32") / 127.5 - 1
 
 
-  vq = True
+  vq = False
 
   if vq:
     autoencoder = VQModel(z_channels=4)
@@ -304,15 +317,24 @@ if __name__ == "__main__":
 
     @tf.function
     def func(inputs):
-      reconstructions, qloss, ind = autoencoder(inputs, return_pred_indices=True)
-      last_layer = autoencoder.get_last_layer()
-      aeloss = disc_loss(qloss, inputs, reconstructions, optimizer_idx=0, global_step=50001,
-                                              last_layer=last_layer, split="train")
-      discloss = disc_loss(qloss, inputs, reconstructions, optimizer_idx=1, global_step=50001,
-                                                last_layer=last_layer, split="train")
-      return reconstructions, aeloss, discloss
+      quant, diff, (_,_,ind) = autoencoder.encode(inputs)
+      dec = autoencoder.decode(quant)
+      reconstructions = dec
+      qloss = diff 
 
-    recon, ae_loss, d_loss = func(inputs)
+      # for debugging:
+      #tf.print("quant", tf.reduce_sum(quant), quant.shape)
+      #tf.print("qloss", tf.reduce_sum(qloss), qloss.shape)
+      #tf.print("ind", tf.reduce_sum(ind), ind.shape)
+
+      last_layer = autoencoder.get_last_layer()
+      aeloss, ae_log = disc_loss(qloss, inputs, reconstructions, optimizer_idx=0, global_step=50001,
+                                              last_layer=last_layer, split="train")
+      discloss, d_log = disc_loss(qloss, inputs, reconstructions, optimizer_idx=1, global_step=50001,
+                                                last_layer=last_layer, split="train")
+      return reconstructions, aeloss, discloss, ae_log, d_log
+
+    recon, ae_loss, d_loss, ae_log, d_log = func(inputs)
 
   else:
     autoencoder = AutoencoderKL(z_channels=4)
@@ -325,11 +347,19 @@ if __name__ == "__main__":
 
     @tf.function
     def func(inputs):
-      recon, posterior = autoencoder(inputs, sample_posterior=False)
-      last_layer = autoencoder.get_last_layer()
-      ae_loss = disc_loss(inputs, recon, posterior, optimizer_idx=0, last_layer=last_layer, global_step=50001)
-      d_loss = disc_loss(inputs, recon, posterior, optimizer_idx=1, last_layer=last_layer, global_step=50001)
-      return recon, ae_loss, d_loss
+      posterior = autoencoder.encode(inputs)
+      latents = posterior.mode()
+      recon = autoencoder.decode(latents)
 
-    recon, ae_loss, d_loss = func(inputs)
+      # for debugging:
+      #tf.print("mean", tf.reduce_sum(latents), latents.shape)
+
+      last_layer = autoencoder.get_last_layer()
+      ae_loss, ae_log = disc_loss(inputs, recon, posterior, optimizer_idx=0, last_layer=last_layer, global_step=50001)
+      d_loss, d_log = disc_loss(inputs, recon, posterior, optimizer_idx=1, last_layer=last_layer, global_step=50001)
+
+      grads = None #tf.gradients(ae_loss, autoencoder._decoder.weights, 1e-7)
+      return recon, ae_loss, d_loss, ae_log, d_log, latents
+
+    recon, ae_loss, d_loss, ae_log, d_log, latents = func(inputs)
 

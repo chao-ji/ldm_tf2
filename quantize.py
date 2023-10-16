@@ -1,5 +1,5 @@
+"""Quantize layer for VQ-VAE or VQ-GAN."""
 import tensorflow as tf
-import numpy as np
 
 
 class VectorQuantizer(tf.keras.layers.Layer):
@@ -8,7 +8,6 @@ class VectorQuantizer(tf.keras.layers.Layer):
     self._vocab_size = vocab_size
     self._hidden_size = hidden_size
     self._beta = beta
-
 
   def build(self, inputs_shape):
     """Creates weights of this layer.
@@ -24,40 +23,52 @@ class VectorQuantizer(tf.keras.layers.Layer):
                     trainable=True)
     super(VectorQuantizer, self).build(inputs_shape)
 
-  def call(self, inputs):
-    latent_size = inputs.shape[-1]
-    outputs = tf.reshape(inputs, (-1, latent_size))
-    #print(outputs.shape)
+  def call(self, latents):
+    """Compute the codebook loss and return the quantized latent variable.
 
-    outputs = tf.reduce_sum(outputs ** 2, axis=1, keepdims=True) + \
-      tf.reduce_sum(self.trainable_weights[0] ** 2, axis=1) - \
-      2 * tf.matmul(outputs, tf.transpose(self.trainable_weights[0]))
+    Args:
+      latents (Tensor of shape [batch_size, z_height, z_width, hidden_size]):
+        the latent variable.
 
-    #print(outputs.shape)
+    Returns:
+      quantized_latents (Tensor of shape [batch_size, z_height, z_width,
+          hidden_size]): quantized latent variable.
+      codebook_loss (scalar Tensor): the L2 loss between encoder outputs (
+          `latents`) and quantized latent variable (`quantized_latents`).
+      min_encoding_indices (Tensor of shape [batch_size * z_height * z_width]):
+          the index of each quantized latent variable in the codebook.
+    """
+    # [batch_size * z_height * z_width, hidden_size]
+    outputs = tf.reshape(latents, (-1, self._hidden_size))
+
+    # squared pairwise Euclidean distances between
+    # `outputs`: [batch_size * z_height * z_width, hidden_size]
+    # `self.trainable_weights[0]`: [vocab_size, hidden_size]
+    #
+    # [batch_size * z_height * z_width, vocab_size]
+    outputs = (
+        tf.reduce_sum(outputs ** 2, axis=1, keepdims=True) +
+        tf.reduce_sum(self.trainable_weights[0] ** 2, axis=1) -
+        2 * tf.matmul(outputs, tf.transpose(self.trainable_weights[0]))
+    )
+
+    # [batch_size * z_height * z_width]
     min_encoding_indices = tf.argmin(outputs, axis=1)
-    #print(min_encoding_indices.shape)
-    z_q = tf.reshape(tf.gather(self.trainable_weights[0], min_encoding_indices), inputs.shape)
-   
-    loss = tf.reduce_mean((tf.stop_gradient(z_q)-inputs)**2) + self._beta * \
-                   tf.reduce_mean((z_q - tf.stop_gradient(inputs)) ** 2)
 
-    z_q = inputs + tf.stop_gradient(z_q - inputs)
+    # [batch_size, z_height, z_width, hidden_size]
+    quantized_latents= tf.reshape(
+        tf.gather(self.trainable_weights[0], min_encoding_indices),
+        latents.shape,
+    )
 
-    perplexity = None
-    min_encodings = None
+    codebook_loss = (
+        tf.reduce_mean((tf.stop_gradient(quantized_latents) - latents) ** 2 ) +
+        self._beta *
+            tf.reduce_mean((quantized_latents - tf.stop_gradient(latents)) ** 2
+        )
+    )
 
-    return z_q, loss, (perplexity, min_encodings, min_encoding_indices) 
+    # passed gradients from decoder unchanged back to incoder
+    quantized_latents = latents + tf.stop_gradient(quantized_latents - latents)
 
-
-
-
-if __name__ == "__main__":
-
-  vocab_size = 16384
-  hidden_size = 4
-  beta = 0.25
-  inputs = tf.constant(np.random.uniform(-1, 1, (4, 32, 32, 4)).astype("float32"))
-  quantizer = VectorQuantizer(vocab_size, hidden_size, beta) 
-  quantizer(inputs)
-
-
+    return quantized_latents, codebook_loss, min_encoding_indices
