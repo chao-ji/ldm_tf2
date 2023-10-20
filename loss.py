@@ -6,11 +6,22 @@ from distribution import DiagonalGaussian
 from autoencoder import AutoencoderKL, VQModel
 
 
+SHIFT = tf.constant([-.030, -.088, -.188], dtype="float32", shape=[1, 1, 1, 3])
+SCALE = tf.constant([.458, .448, .450], dtype="float32", shape=[1, 1, 1, 3])
+
+
 def hinge_d_loss(logits_real, logits_fake):
   loss_real = tf.reduce_mean(tf.nn.relu(1. - logits_real))
   loss_fake = tf.reduce_mean(tf.nn.relu(1. + logits_fake))
   d_loss = 0.5 * (loss_real + loss_fake)
   return d_loss
+
+
+def vanilla_d_loss(logits_real, logits_fake):
+    d_loss = 0.5 * (
+        tf.reduce_mean(tf.nn.softplus(-logits_real)) +
+        tf.reduce_mean(tf.nn.softplus(logits_fake)))
+    return d_loss
 
 
 class NetLinLayer(tf.keras.layers.Layer):
@@ -31,23 +42,12 @@ class NetLinLayer(tf.keras.layers.Layer):
     return outputs
 
 
-class ScalingLayer(tf.keras.layers.Layer):
-  def __init__(self):
-    super(ScalingLayer, self).__init__()
-    self._shift = tf.constant([-.030, -.088, -.188])[None, None, None, :]
-    self._scale = tf.constant([.458, .448, .450])[None, None, None, :]
-
-  def call(self, inputs):
-    outputs = (inputs - self._shift) / self._scale
-    return outputs
-
-
-
 def normalize_tensor(x, eps=1e-10):
     norm_factor = tf.sqrt(tf.reduce_sum(x ** 2, axis=-1, keepdims=True))
     return x / (norm_factor + eps)
 
 class VGG16(tf.keras.layers.Layer):
+  """Compute feature maps from five different layers of VGG16."""
   def __init__(self):
     super(VGG16, self).__init__()
 
@@ -83,15 +83,14 @@ class VGG16(tf.keras.layers.Layer):
         outputs = self._conv_layers[i][j](outputs)
         outputs = tf.nn.relu(outputs)
       features.append(outputs)
-
     return features 
 
 
 class LPIPS(tf.keras.layers.Layer):
   # Learned perceptual metric
   def __init__(self, use_dropout=True):
-    super(LPIPS, self).__init__()
-    self.scaling_layer = ScalingLayer()
+    # freeze weights in `LPIPS`, set trainable=False
+    super(LPIPS, self).__init__(trainable=False)
     self.chns = [64, 128, 256, 512, 512]  # vg16 features
     self.net = VGG16()
     self.lin0 = NetLinLayer(use_dropout=use_dropout)
@@ -101,8 +100,8 @@ class LPIPS(tf.keras.layers.Layer):
     self.lin4 = NetLinLayer(use_dropout=use_dropout)
 
   def call(self, inputs, targets):
-    inputs = self.scaling_layer(inputs)
-    targets = self.scaling_layer(targets)
+    inputs = (inputs - SHIFT) / SCALE
+    targets = (targets - SHIFT) / SCALE
 
     inputs_features = self.net(inputs)
     targets_features = self.net(targets) 
@@ -143,8 +142,17 @@ class LPIPSWithDiscriminator(tf.keras.layers.Layer):
   def call(self, inputs, targets, posteriors=None, optimizer_idx=None,
                 global_step=None, last_layer=None, cond=None, split="train",
                 weights=None):
+    """
+    Args:
+      inputs (Tensor of shape [batch_size, image_height, image_width, 3]): the
+        original image to be encoded.
+      targets (Tensor of shape [batch_size, image_height, image_width, 3]): the
+        reconstructed image.
+    """
+    # [batch_size, height, width, 3]
     rec_loss = tf.abs(inputs - targets)
     if self.perceptual_weight > 0:
+      # [batch_size, 1, 1, 1]
       p_loss = self.perceptual_loss(inputs, targets)
       rec_loss = rec_loss + self.perceptual_weight * p_loss 
 
@@ -154,12 +162,15 @@ class LPIPSWithDiscriminator(tf.keras.layers.Layer):
     #return weighted_nll_loss
     weighted_nll_loss = tf.reduce_sum(weighted_nll_loss) / weighted_nll_loss.shape[0]
     nll_loss = tf.reduce_sum(nll_loss) / nll_loss.shape[0]
+    # [batch_size]
     kl_loss = posteriors.kl()
+    # []
     kl_loss = tf.reduce_sum(kl_loss) / kl_loss.shape[0]    
 
     if optimizer_idx == 0:
       # autoencoder loss
       logits_fake = self.discriminator(targets)
+      # [batch_size, height2, width2, 1] [3, 30, 30, 1]
       g_loss = -tf.reduce_mean(logits_fake)
       d_weight = self.calculate_adaptive_weight(nll_loss, g_loss, last_layer=last_layer)
 
@@ -299,8 +310,9 @@ if __name__ == "__main__":
   images = np.stack([img0, img1, img2, ])
   inputs = images.astype("float32") / 127.5 - 1
 
-
   vq = False
+  debug_ae_grad = False
+  debug_disc_grad = True
 
   if vq:
     autoencoder = VQModel(z_channels=4)
@@ -317,24 +329,32 @@ if __name__ == "__main__":
 
     @tf.function
     def func(inputs):
-      quant, diff, (_,_,ind) = autoencoder.encode(inputs)
+      quant, diff, ind = autoencoder.encode(inputs)
       dec = autoencoder.decode(quant)
+
       reconstructions = dec
       qloss = diff 
-
-      # for debugging:
-      #tf.print("quant", tf.reduce_sum(quant), quant.shape)
-      #tf.print("qloss", tf.reduce_sum(qloss), qloss.shape)
-      #tf.print("ind", tf.reduce_sum(ind), ind.shape)
 
       last_layer = autoencoder.get_last_layer()
       aeloss, ae_log = disc_loss(qloss, inputs, reconstructions, optimizer_idx=0, global_step=50001,
                                               last_layer=last_layer, split="train")
       discloss, d_log = disc_loss(qloss, inputs, reconstructions, optimizer_idx=1, global_step=50001,
                                                 last_layer=last_layer, split="train")
-      return reconstructions, aeloss, discloss, ae_log, d_log
 
-    recon, ae_loss, d_loss, ae_log, d_log = func(inputs)
+      if debug_ae_grad:
+        grads = tf.gradients(
+            aeloss,
+              autoencoder._encoder.weights +
+              autoencoder._quant_conv.weights +
+              autoencoder._post_quant_conv.weights +
+              autoencoder._decoder.weights +
+              autoencoder._quantize.weights
+        )
+      if debug_disc_grad:
+        grads = tf.gradients(discloss, disc_loss.discriminator.trainable_weights)
+      return reconstructions, aeloss, discloss, ae_log, d_log, grads
+
+    recon, ae_loss, d_loss, ae_log, d_log, grads = func(inputs)
 
   else:
     autoencoder = AutoencoderKL(z_channels=4)
@@ -351,15 +371,28 @@ if __name__ == "__main__":
       latents = posterior.mode()
       recon = autoencoder.decode(latents)
 
-      # for debugging:
-      #tf.print("mean", tf.reduce_sum(latents), latents.shape)
-
       last_layer = autoencoder.get_last_layer()
       ae_loss, ae_log = disc_loss(inputs, recon, posterior, optimizer_idx=0, last_layer=last_layer, global_step=50001)
       d_loss, d_log = disc_loss(inputs, recon, posterior, optimizer_idx=1, last_layer=last_layer, global_step=50001)
 
-      grads = None #tf.gradients(ae_loss, autoencoder._decoder.weights, 1e-7)
-      return recon, ae_loss, d_loss, ae_log, d_log, latents
+      if debug_ae_grad:
+        grads = tf.gradients(
+            ae_loss,
+              autoencoder._encoder.weights +
+              autoencoder._quant_conv.weights +
+              autoencoder._post_quant_conv.weights +
+              autoencoder._decoder.weights
+        )
+      if debug_disc_grad:
+        grads = tf.gradients(d_loss, disc_loss.discriminator.trainable_weights)
+      return recon, ae_loss, d_loss, ae_log, d_log, grads
 
-    recon, ae_loss, d_loss, ae_log, d_log, latents = func(inputs)
+    #recon, ae_loss, d_loss, ae_log, d_log, grads = func(inputs)
 
+  #recon = recon.numpy()
+  #for i in range(3):
+  #  recon[i] = (recon[i] - recon[i].min()) / (recon[i].max() - recon[i].min())
+  #  recon[i] *= 255
+
+  #recon = recon.astype("uint8")
+  #np.save("recon", recon)

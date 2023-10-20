@@ -1,13 +1,28 @@
-"""Quantize layer for VQ-VAE or VQ-GAN."""
+"""Quantization layer used in VQ-VAE or VQ-GAN."""
 import tensorflow as tf
 
 
 class VectorQuantizer(tf.keras.layers.Layer):
-  def __init__(self, vocab_size, hidden_size, beta):
+  def __init__(
+      self,
+      vocab_size,
+      hidden_size,
+      beta,
+      kernel_initializer="glorot_uniform",
+    ):
+    """Constructor.
+
+    Args:
+      vocab_size (int): num of entries in the codebook.
+      hidden_size (int): num of channels of each entry.
+      beta (float): weight used in the codebook loss.
+      kernel_initializer (str): kernel initializer.
+    """
     super(VectorQuantizer, self).__init__()
     self._vocab_size = vocab_size
     self._hidden_size = hidden_size
     self._beta = beta
+    self._kernel_initializer = kernel_initializer
 
   def build(self, inputs_shape):
     """Creates weights of this layer.
@@ -18,7 +33,7 @@ class VectorQuantizer(tf.keras.layers.Layer):
     """
     self.add_weight(name='kernel',
                     shape=[self._vocab_size, self._hidden_size],
-                    #initializer=self._kernel_initializer,
+                    initializer=self._kernel_initializer,
                     dtype='float32',
                     trainable=True)
     super(VectorQuantizer, self).build(inputs_shape)
@@ -27,16 +42,17 @@ class VectorQuantizer(tf.keras.layers.Layer):
     """Compute the codebook loss and return the quantized latent variable.
 
     Args:
-      latents (Tensor of shape [batch_size, z_height, z_width, hidden_size]):
-        the latent variable.
+      latents (Tensor): tensor of shape [batch_size, z_height, z_width,
+        hidden_size] the latent variable coming from the encoder.
 
     Returns:
-      quantized_latents (Tensor of shape [batch_size, z_height, z_width,
-          hidden_size]): quantized latent variable.
-      codebook_loss (scalar Tensor): the L2 loss between encoder outputs (
-          `latents`) and quantized latent variable (`quantized_latents`).
-      min_encoding_indices (Tensor of shape [batch_size * z_height * z_width]):
-          the index of each quantized latent variable in the codebook.
+      quantized_latents (Tensor): tensor of shape [batch_size, z_height, z_width
+        , hidden_size]), the quantized latent variable.
+      codebook_loss (Tensor): scalar, the L2 loss from *freezed* encoder outputs
+        (`latents`) and *trainable* quantized latent variable (
+        `quantized_latents`), and vice versa.
+      min_encoding_indices (Tensor): tensor of shape [batch_size * z_height *
+        z_width], the index of each quantized latent variable in the codebook.
     """
     # [batch_size * z_height * z_width, hidden_size]
     outputs = tf.reshape(latents, (-1, self._hidden_size))
