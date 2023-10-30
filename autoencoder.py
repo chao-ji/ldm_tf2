@@ -391,7 +391,7 @@ class AutoencoderKL(tf.keras.layers.Layer):
     return self._decoder._conv_out.weights[0]
 
 
-class VQModel(tf.keras.layers.Layer):
+class AutoencoderVQ(tf.keras.layers.Layer):
   def __init__(self, z_channels=4):
     """
       double_z: false
@@ -410,7 +410,7 @@ class VQModel(tf.keras.layers.Layer):
       - 32
       dropout: 0.0
     """
-    super(VQModel, self).__init__()
+    super(AutoencoderVQ, self).__init__()
     self._encoder = Encoder(
       channels=128,
       num_blocks=2,
@@ -425,7 +425,6 @@ class VQModel(tf.keras.layers.Layer):
       activation=tf.nn.swish,
     )
     self._quant_conv = tf.keras.layers.Dense(z_channels)
-    self._quantize = VectorQuantizer(vocab_size=16384, hidden_size=4, beta=0.25) 
     self._post_quant_conv = tf.keras.layers.Dense(z_channels)
     self._decoder = Decoder(
       channels=128,
@@ -436,6 +435,7 @@ class VQModel(tf.keras.layers.Layer):
       attention_resolutions=(32,),
       give_pre_end=False,
     )
+    self._quantize = VectorQuantizer(vocab_size=16384, hidden_size=4, beta=0.25)
 
 
   def encode(self, x):
@@ -450,7 +450,7 @@ class VQModel(tf.keras.layers.Layer):
     return dec
 
   def call(self, inputs, return_pred_indices=False):
-    quant, diff, (_,_,ind) = self.encode(inputs)
+    quant, diff, ind = self.encode(inputs)
     dec = self.decode(quant)
     if return_pred_indices:
       return dec, diff, ind

@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from discriminator import NLayerDiscriminator
 from distribution import DiagonalGaussian
-from autoencoder import AutoencoderKL, VQModel
+from autoencoder import AutoencoderKL, AutoencoderVQ
 
 
 SHIFT = tf.constant([-.030, -.088, -.188], dtype="float32", shape=[1, 1, 1, 3])
@@ -310,12 +310,12 @@ if __name__ == "__main__":
   images = np.stack([img0, img1, img2, ])
   inputs = images.astype("float32") / 127.5 - 1
 
-  vq = False
-  debug_ae_grad = False
-  debug_disc_grad = True
+  vq = True
+  debug_ae_grad = True
+  debug_disc_grad = False
 
   if vq:
-    autoencoder = VQModel(z_channels=4)
+    autoencoder = AutoencoderVQ(z_channels=4)
     disc_loss = VQLPIPSWithDiscriminator(
         disc_conditional=False,
         disc_in_channels=3,
@@ -387,7 +387,7 @@ if __name__ == "__main__":
         grads = tf.gradients(d_loss, disc_loss.discriminator.trainable_weights)
       return recon, ae_loss, d_loss, ae_log, d_log, grads
 
-    #recon, ae_loss, d_loss, ae_log, d_log, grads = func(inputs)
+    recon, ae_loss, d_loss, ae_log, d_log, grads = func(inputs)
 
   #recon = recon.numpy()
   #for i in range(3):
