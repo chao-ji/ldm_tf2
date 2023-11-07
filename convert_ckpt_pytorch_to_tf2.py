@@ -1,11 +1,17 @@
 import torch
 import tensorflow as tf
 import numpy as np
+from absl import app
+from absl import flags
 
 from unet import UNet
 from transformer import TransformerModel
 from autoencoder import AutoencoderKL
 
+
+flags.DEFINE_string("pytorch_ckpt_path", None, "Path to pytorch ckpt path.")
+
+FLAGS = flags.FLAGS
 
 def get_state_dict(filename):
   sd = torch.load(filename)["state_dict"]
@@ -425,7 +431,11 @@ def save_checkpoint(sd):
   ckpt_autoencoder.save("autoencoder")
 
 
-if __name__ == "__main__":
-  sd = get_state_dict("/home/chaoji/work/genmo/diffusion/latent-diffusion/models/ldm/text2img-large/model.ckpt")
+def main(_):
+  sd = get_state_dict(FLAGS.pytorch_ckpt_path)
   save_checkpoint(sd)
 
+
+if __name__ == "__main__":
+  flags.mark_flag_as_required("pytorch_ckpt_path")
+  app.run(main)

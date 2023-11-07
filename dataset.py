@@ -8,7 +8,6 @@ import json
 import glob
 
 
-SHUFFLE_SIZE = 8192
 BUFFER_SIZE = 1024
 
 
@@ -24,18 +23,6 @@ def _raw_data_to_example(image_filepath, caption=None):
     features["caption"] = caption
   example = tf.train.Example(features=tf.train.Features(feature=features))
   return example
-
-
-def create_cifar10_dataset(batch_size, epochs=16, flip=False):
-  """Create CIFAR10 dataset."""
-  (x_train, y_train), _ = tf.keras.datasets.cifar10.load_data()
-  dataset = tf.data.Dataset.from_tensor_slices(x_train).repeat(epochs)
-  if flip:
-    dataset = dataset.map(tf.image.random_flip_left_right)
-  dataset = dataset.map(lambda inputs: tf.cast(inputs, "float32") / 127.5 - 1.)
-  dataset = dataset.shuffle(x_train.shape[0])
-  dataset = dataset.batch(batch_size, drop_remainder=True)
-  return dataset
 
 
 def convert_images_to_tfrecord(filenames, out_path, num_shards=100):

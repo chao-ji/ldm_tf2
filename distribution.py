@@ -1,4 +1,3 @@
-
 import numpy as np
 
 import tensorflow as tf
@@ -50,5 +49,3 @@ class DiagonalGaussian(object):
 
   def mode(self):
     return self._mean
-
-

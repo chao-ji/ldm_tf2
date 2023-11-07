@@ -79,10 +79,8 @@ class _AutoencoderTrainer(object):
 
     #nll_grads2 = tf.constant(np.load("../latent-diffusion/nll_grads.npy").transpose(2, 3, 1, 0))
     #g_grads2 = tf.constant(np.load("../latent-diffusion/g_grads.npy").transpose(2, 3, 1, 0))
-
     #tf.print("nll_grads", tf.reduce_sum(tf.reshape(nll_grads, [-1]) * tf.reshape(nll_grads2, [-1])) /(tf.norm(nll_grads) * tf.norm(nll_grads2)))
     #tf.print("g_grads", tf.reduce_sum(tf.reshape(g_grads, [-1]) * tf.reshape(g_grads2, [-1])) / (tf.norm(g_grads) * tf.norm(g_grads2))) 
-
     weight = tf.norm(nll_grads) / (tf.norm(g_grads) + 1e-4)
     weight = tf.clip_by_value(weight, 0.0, 1e4)
     weight = tf.stop_gradient(weight)
@@ -92,9 +90,7 @@ class _AutoencoderTrainer(object):
   def _compute_nll_loss(self, inputs, outputs, reduce_loss=False):
     reconstruction_loss = tf.abs(inputs - outputs)
     lpips_loss = self._lpips(inputs, outputs)
-    #tf.print("lpips_loss", tf.reduce_mean(lpips_loss))
     nll_loss = reconstruction_loss + self._lpips_weight * lpips_loss
-    #tf.print("recon_loss", tf.reduce_mean(nll_loss))
 
     if reduce_loss:
       nll_loss = tf.reduce_sum(nll_loss) / nll_loss.shape[0]
@@ -675,15 +671,14 @@ class LatentDiffusionModelTrainer(LatentDiffusionModel):
 
     for images, cond_model_inputs in dataset:
       loss, step, lr = train_step(images, cond_model_inputs)
-      print(loss.numpy(), step.numpy())
-      #if step.numpy() % log_per_iterations == 0:
-      #  print("global step: %d, loss: %f, learning rate:" %
-      #      (step.numpy(), loss.numpy()), lr.numpy())
-      #  sys.stdout.flush()
+      if step.numpy() % log_per_iterations == 0:
+        print("global step: %d, loss: %f, learning rate:" %
+            (step.numpy(), loss.numpy()), lr.numpy())
+        sys.stdout.flush()
 
-      #if step.numpy() % persist_per_iterations == 0:
-      #  print("Saving checkpoint at global step %d ..." % step.numpy())
-      #  ckpt.save(os.path.join(ckpt_path, "ddpm"))
+      if step.numpy() % persist_per_iterations == 0:
+        print("Saving checkpoint at global step %d ..." % step.numpy())
+        ckpt.save(os.path.join(ckpt_path, "ddpm"))
 
       if step == num_iterations:
         break

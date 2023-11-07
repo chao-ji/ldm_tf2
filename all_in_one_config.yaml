@@ -1,8 +1,5 @@
-
-
-
 autoencoder_training:
-  root_path: /home/chaoji/data/generative/coco/tfrecord/train2017/only_images # directory where pre-converted "*.tfrecord" files are located
+  root_path: /path/to/tfrecord/images # directory where pre-converted "*.tfrecord" files are located
   params:
     batch_size: 3
     image_size: 256
@@ -12,7 +9,7 @@ autoencoder_training:
   num_iterations: 500000  # num of training iterations
 
 ldm_training:
-  root_path: /home/chaoji/data/generative/coco/tfrecord/val2017/captions
+  root_path: /path/to/tfrecord/images_captions 
   params:
     batch_size: 1
     image_size: 256
@@ -133,4 +130,3 @@ latent_diffusion_optimizer:
   beta_2: 0.999
   epsilon: 1.e-8
   weight_decay: 0.01
-
