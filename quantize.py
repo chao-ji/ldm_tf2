@@ -84,7 +84,7 @@ class VectorQuantizer(tf.keras.layers.Layer):
         )
     )
 
-    # passed gradients from decoder unchanged back to incoder
+    # passed gradients from decoder unchanged back to encoder
     quantized_latents = latents + tf.stop_gradient(quantized_latents - latents)
 
     return quantized_latents, codebook_loss, min_encoding_indices

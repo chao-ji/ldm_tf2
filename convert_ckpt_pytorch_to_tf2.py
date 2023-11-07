@@ -2,9 +2,9 @@ import torch
 import tensorflow as tf
 import numpy as np
 
-from unet import UNet, timestep_embedding
+from unet import UNet
 from transformer import TransformerModel
-from autoencoder import Decoder, Encoder, AutoencoderKL
+from autoencoder import AutoencoderKL
 
 
 def get_state_dict(filename):
@@ -400,7 +400,7 @@ def save_checkpoint(sd):
   unet.set_weights(weights)
 
 
-  autoencoder = AutoencoderKL(z_channels=4)
+  autoencoder = AutoencoderKL(latent_channels=4)
   images = tf.constant(np.random.uniform(-1, 1, (4, 256, 256, 3)).astype("float32"))
   recon, _ = autoencoder(images)
 
@@ -417,8 +417,12 @@ def save_checkpoint(sd):
       get_decoder_weights(sd)
   )
 
-  ckpt = tf.train.Checkpoint(transformer=transformer, unet=unet, autoencoder=autoencoder)
-  ckpt.save("txt2image")
+  ckpt_transformer = tf.train.Checkpoint(transformer=transformer)
+  ckpt_transformer.save("transformer")
+  ckpt_unet = tf.train.Checkpoint(unet=unet)
+  ckpt_unet.save("unet")
+  ckpt_autoencoder = tf.train.Checkpoint(autoencoder=autoencoder)
+  ckpt_autoencoder.save("autoencoder")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,136 @@
+
+
+
+autoencoder_training:
+  root_path: /home/chaoji/data/generative/coco/tfrecord/train2017/only_images # directory where pre-converted "*.tfrecord" files are located
+  params:
+    batch_size: 3
+    image_size: 256
+    keys: ["image"]   # ["image"] for training autoencoders, and ["image", "caption"] for txt2img latent diffusion model
+  autoencoder_type: "vq" # ["kl", "vq"]
+  ckpt_path: "aevq" # ["aekl", "aevq"], path to the ckpt in which a trained model will be saved
+  num_iterations: 500000  # num of training iterations
+
+ldm_training:
+  root_path: /home/chaoji/data/generative/coco/tfrecord/val2017/captions
+  params:
+    batch_size: 1
+    image_size: 256
+    flip: false
+    keys: ["image", "caption"]  # ["image"] for training autoencoders, and ["image", "caption"] for txt2img latent diffusion model
+  autoencoder_type: "kl" # ["kl", "vq"]
+  ckpt_path: "ldm"
+  num_iterations: 500000
+  train_cond_model: false
+
+ldm_sampling:
+  guidance_scale: 5.
+  latent_shape: [4, 32, 32, 4]
+  sample_save_progress: false
+  text_prompt: "a virus monster is playing guitar, oil on canvas"
+  vocab_dir: bert_model # directory where the `vocab.txt` file is located
+  autoencoder_type: "kl" # ["kl", "vq"]
+
+# pretrained check point paths
+pre_ckpt_paths:
+  cond_stage_model: transformer-1
+  unet: unet-1
+  autoencoder: autoencoder-1
+
+lpips_ckpt_path: lpips.ckpt-1
+
+autoencoder_kl_trainer:
+  global_step_discriminator: 50001
+  lpips_weight: 1.
+  kl_weight: 1.e-6
+  discriminator_weight: 0.5
+  discriminator_factor: 1.
+  discriminator_loss_type: hinge # or vanilla
+
+autoencoder_vq_trainer:
+  global_step_discriminator: 1
+  codebook_weight: 1.
+  lpips_weight: 1.
+  kl_weight: 1.
+  discriminator_weight: 0.6
+  discriminator_factor: 1.
+  discriminator_loss_type: hinge # or vanilla
+
+cond_stage_model:
+  vocab_size: 30522 # computed by tokenizer, do not change
+  encoder_stack_size: 32
+  hidden_size: 1280
+  num_heads: 8
+  size_per_head: 64
+  max_seq_len: 77
+  filter_size: 5120 
+  dropout_rate: 0.1
+
+autoencoder_kl:
+  latent_channels: 4
+  channels: 128
+  num_blocks: 2
+  attention_resolutions: []
+  dropout_rate: 0.
+  multipliers: [1, 2, 4, 4]
+  resample_with_conv: true
+
+ae_kl_discriminator:
+  channels: 64
+  num_layers: 3
+
+autoencoder_vq:
+  latent_channels: 4
+  channels: 128
+  num_blocks: 2
+  attention_resolutions: [32]
+  dropout_rate: 0.
+  multipliers: [1, 2, 2, 4]
+  resample_with_conv: true
+  vocab_size: 16384
+  beta: 0.25
+
+ae_vq_discriminator:
+  channels: 64
+  num_layers: 2
+
+unet:
+  model_channels: 320
+  out_channels: 4
+  num_blocks: 2
+  attention_resolutions: [4, 2, 1]
+  dropout_rate: 0.1
+  channel_mult: [1, 2, 4, 4]
+  num_heads: 8
+
+ldm:
+  num_steps: 1000
+  beta_start: 0.00085 
+  beta_end: 0.012
+  v_posterior: 0.
+  scale_factor: 0.18215
+  eta: 0.
+  num_ddim_steps: 50
+
+guidance_scale: 5.
+latent_shape: [4, 32, 32, 4]
+
+autoencoder_optimizer:
+  learning_rate: 4.5e-6
+  beta_1: 0.5
+  beta_2: 0.9
+  epsilon: 1.e-8
+
+discriminator_optimizer:
+  learning_rate: 4.5e-6
+  beta_1: 0.5
+  beta_2: 0.9
+  epsilon: 1.e-8
+
+latent_diffusion_optimizer:
+  learning_rate: 5.0e-05
+  beta_1: 0.9
+  beta_2: 0.999
+  epsilon: 1.e-8
+  weight_decay: 0.01
+
