@@ -148,7 +148,14 @@ python run_ldm_trainer.py --config_path all_in_one_config.yaml
   <img src="samples/a-corgi-wearing-a-bowtie-and-a-birthday-hat.png" width="300">
   <img src="samples/a-photograph-of-an-astronaut-riding-a-horse.png" width="300">
   <br>
-  "A corgi wearing a bowtie and a birthday had", "A photograph of an astronaut riding a horse"
+  "A corgi wearing a bowtie and a birthday hat", "A photograph of an astronaut riding a horse"
+</p>
+
+<p align="center">
+  <img src="samples/a-happy-bear-reading-a-newspaper-oil-on-canvas.png" width="300">
+  <img src="samples/a-street-sign-that-reads-latent-diffusion.png" width="300">
+  <br>
+  "A happy bear reading a newspaper, oil on canvas", "A street sign that reads "Latent Diffusion"" 
 </p>
 
 [More samples](samples)
