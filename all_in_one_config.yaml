@@ -109,9 +109,6 @@ ldm:
   eta: 0.
   num_ddim_steps: 50
 
-guidance_scale: 5.
-latent_shape: [4, 32, 32, 4]
-
 autoencoder_optimizer:
   learning_rate: 4.5e-6
   beta_1: 0.5
