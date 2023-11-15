@@ -32,7 +32,11 @@ def main(_):
     filenames = glob.glob(
         os.path.join(config["ldm_training"]["root_path"], "*.tfrecord"))
     kwargs = config["ldm_training"]["params"]
-    dataset = create_dataset(filenames, **kwargs)
+    dataset = create_dataset(
+        filenames,
+        **kwargs,
+        max_seq_len=config["cond_stage_model"]["max_seq_len"]
+    )
 
     # create unet, transformer, autoencoder
     # load pretrained weights for transformer and autoencoder
@@ -60,16 +64,24 @@ def main(_):
         cond_stage_model=transformer,
         **kwargs,
     )
-    ckpt = tf.train.Checkpoint(model=unet, transformer=transformer, optimizer=optimizer)
+    ckpt = tf.train.Checkpoint(
+        model=unet, transformer=transformer, optimizer=optimizer)
     ckpt_path = config["ldm_training"]["ckpt_path"]
-   
+
+    null_condition = tf.constant([[101, 102] + [0] *
+        (config["cond_stage_model"]["max_seq_len"] - 2)] *
+          config["ldm_training"]["params"]["batch_size"],
+        dtype="int64",
+    )
     trainer.train(
         dataset=dataset,
         optimizer=optimizer,
         ckpt=ckpt,
         ckpt_path=ckpt_path,
         train_cond_model=config["ldm_training"]["train_cond_model"],
-        num_iterations=config["ldm_training"]["num_iterations"]
+        num_iterations=config["ldm_training"]["num_iterations"],
+        null_condition=null_condition,
+        condition_dropout_rate=config["ldm_training"]["condition_dropout_rate"]
     )
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ python convert_ckpt_pytorch_to_tf2.py --pytorch_ckpt_path model.ckpt
 
 You will get three TF2 checkpoints `transformer-1.data-00000-of-00001`, `transformer-1.index`, `unet-1.data-00000-of-00001`, `unet-1.index`, `autoencoder-1.data-00000-of-00001`, `autoencoder-1.index`.
 
+This is a model of ~1.5B parameters (~0.54B for transformer, ~0.87B for unet, and ~0.09B for the KL-regularized autoencoder)
 
 ### Sampling
 Now is the time to generate images with text prompt!
@@ -37,6 +38,13 @@ Now is the time to generate images with text prompt!
 Note that all the configurations (for either training or sampling) can be set in [all_in_one_config.yaml](all_in_one_config.yaml)
 
 First make sure that all the checkpoint files for `transformer-1`, `unet-1`, and `autoencoder-1` are correctly set under `pre_ckpt_paths`.
+
+```yaml
+pre_ckpt_paths:
+  cond_stage_model: transformer-1
+  unet: unet-1
+  autoencoder: autoencoder-1
+```
 
 The specific parameters for controling the sampling process can be found under `ldm_sampling`:
 
@@ -59,7 +67,7 @@ ldm_sampling:
 
   autoencoder_type: "kl" # ["kl", "vq"]
 ```
-Note `guidance_scale` is the hyperparameter proposed in [classifier-free diffusion guidance](https://openreview.net/pdf?id=qw8AKxfYbI) to control the mode-coverage vs. fidelity tradeoff. Larger values indicate less diversity but more fidelity.
+Note `guidance_scale` is the hyperparameter proposed in [classifier-free diffusion guidance](https://openreview.net/pdf?id=qw8AKxfYbI) to control the mode-coverage vs. fidelity tradeoff. Larger values indicate less diversity but high quality.
 
 Also the parameters `eta` and `num_ddim_steps` (proposed in [DDIM](https://arxiv.org/abs/2010.02502)) under `ldm` may also have an impact on the quality of the generated images, where `eta` (float between 0 and 1 ) controls the level of variance in the reverse (i.e. generative) process, and `num_ddim_steps` (<= 1000, i.e. the DDPM steps) is the length of the subsequence of DDPM steps. Consider setting them to large values like the following
 

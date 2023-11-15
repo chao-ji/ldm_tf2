@@ -88,12 +88,13 @@ def create_dataset(
     image_size=256,
     keys=("image", "caption"),
     flip=False,
+    max_seq_len=77,
     random_seed=None):
   """Create captions dataset (image, caption) pair from previously created
   tfrecord files.
   """
   dataset = tf.data.Dataset.from_tensor_slices(filenames).shuffle(
-      len(filenames), seed=random_seed)
+      len(filenames), seed=random_seed).repeat()
   dataset = dataset.interleave(lambda filename: tf.data.TFRecordDataset(
       filename).shuffle(BUFFER_SIZE))
 
@@ -106,6 +107,7 @@ def create_dataset(
     parsed["image"] = tf.io.decode_jpeg(parsed["image"], channels=3)
     if "caption" in keys and "caption" in parsed:
       parsed["caption"] = tf.sparse.to_dense(parsed["caption"])
+      parsed["caption"].set_shape([max_seq_len])
     return parsed
 
   dataset = dataset.map(

@@ -217,6 +217,7 @@ class AutoencoderTrainerKL(_AutoencoderTrainer):
           print(f"global step: {i}, ae_loss: {ae_loss}, d_loss: {d_loss}")
         else:
           print(f"global step: {i}, ae_loss: {ae_loss}")
+      sys.stdout.flush()
 
       if i % persist_per_iterations == 0:
         ckpt.save(os.path.join(ckpt_path, "aekl"))
@@ -339,6 +340,7 @@ class AutoencoderTrainerVQ(_AutoencoderTrainer):
           print(f"global step: {i}, ae_loss: {ae_loss}, d_loss: {d_loss}")
         else:
           print(f"global step: {i}, ae_loss: {ae_loss}")
+      sys.stdout.flush()
 
       if i % persist_per_iterations == 0:
         ckpt.save(os.path.join(ckpt_path, "aevq"))
@@ -629,6 +631,8 @@ class LatentDiffusionModelTrainer(LatentDiffusionModel):
       ckpt,
       ckpt_path,
       num_iterations,
+      null_condition,
+      condition_dropout_rate=0.1,
       train_cond_model=False,
       persist_per_iterations=1000,
       log_per_iterations=100,
@@ -648,7 +652,8 @@ class LatentDiffusionModelTrainer(LatentDiffusionModel):
 
     @tf.function(input_signature=train_step_signature)
     def train_step(images, cond_model_inputs):
-      loss = self.compute_loss(images, cond_model_inputs)
+      loss = self.compute_loss(
+          images, cond_model_inputs, null_condition, condition_dropout_rate)
 
       variables = self._unet.trainable_variables
       if train_cond_model:
@@ -683,12 +688,16 @@ class LatentDiffusionModelTrainer(LatentDiffusionModel):
       if step == num_iterations:
         break
 
-
-  def compute_loss(self, inputs, cond_model_inputs):
+  def compute_loss(
+      self, inputs, cond_model_inputs, null_condition, condition_dropout_rate):
     batch_size = tf.shape(inputs)[0]
     t = tf.random.uniform((batch_size,), 0, self._num_steps, dtype="int32")
     latents = self.get_latents(inputs)
-
+    cond_model_inputs = tf.cond(
+        tf.random.uniform(()) > condition_dropout_rate,
+        lambda: cond_model_inputs,
+        lambda: null_condition
+    )
     context = self._cond_stage_model(cond_model_inputs)
     noise = tf.random.normal(tf.shape(latents))
     xt = self.q_sample(latents, t, noise)

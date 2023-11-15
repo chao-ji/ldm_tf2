@@ -19,6 +19,7 @@ ldm_training:
   ckpt_path: "ldm"
   num_iterations: 500000
   train_cond_model: false
+  condition_dropout_rate: 0.1
 
 ldm_sampling:
   guidance_scale: 5.
