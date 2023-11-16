@@ -141,6 +141,7 @@ ldm_training:
   ckpt_path: "ldm"
   num_iterations: 500000
   train_cond_model: false
+  condition_dropout_rate: 0.1 # the condition i.e. caption will be dropped out 10% of the time during training
 ```
 
 Again run the following to start training ldm:
@@ -151,7 +152,9 @@ python run_ldm_trainer.py --config_path all_in_one_config.yaml
 
 ## Results
 
-### Sampled images
+### Text-to-Image sampling using trained Latent Diffusion Model
+Below are results of sampling using the trained 1.5B parameter model (with `eta = 1.0`,`num_ddim_steps = 200`, `guidance_scale = 10.0`)
+
 <p align="center">
   <img src="samples/a-corgi-wearing-a-bowtie-and-a-birthday-hat.png" width="300">
   <img src="samples/a-photograph-of-an-astronaut-riding-a-horse.png" width="300">
@@ -168,7 +171,7 @@ python run_ldm_trainer.py --config_path all_in_one_config.yaml
 
 [More samples](samples)
 
-### Reconstructed Images
+### Autoencoder training 
 
 Samples of reconstructed images in CelebAHQ dataset by Autoencoders (KL-regularized). The autoencoder was trained on CelebAHQ dataset for about only 30000 iterations with minibatch size of 3 (256x256 resolution).
 
