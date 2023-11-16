@@ -167,3 +167,19 @@ python run_ldm_trainer.py --config_path all_in_one_config.yaml
 </p>
 
 [More samples](samples)
+
+### Reconstructed Images
+
+Samples of reconstructed images in CelebAHQ dataset by Autoencoders (KL-regularized)
+
+<p align="center">
+  <img src="assets/original.png" width="300">
+  <br>
+  Original 
+</p>
+
+<p align="center">
+  <img src="assets/recon.png" width="300">
+  <br>
+  Reconstruction
+</p>
