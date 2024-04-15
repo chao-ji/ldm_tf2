@@ -118,7 +118,7 @@ autoencoder_training:
 lpips_ckpt_path: lpips.ckpt-1
 ```
 
-Note that training the autoencoder involves computing the **perceptual loss** using a pretrained LPIPS (Learned Perceptual Image Patch Similarity) module ([paper](https://arxiv.org/abs/1801.03924)). The pretrained checkpoint `lpips.ckpt-1` can be downloaded from this [link](https://drive.google.com/drive/folders/196RYpMQx-mvrGt81SgJmVjaA9XmD4I5c?usp=drive_link).
+Note that training the autoencoder involves computing the **perceptual loss** using a pretrained LPIPS (Learned Perceptual Image Patch Similarity) module ([paper](https://arxiv.org/abs/1801.03924)). The pretrained checkpoint `lpips.ckpt-1` can be downloaded from this [link](https://drive.google.com/drive/folders/1yHSXmQ9qhEZMqJSNpVfSALu54Gg42Now).
 
 Run the following command to start training autoencoders:
 ```bash
