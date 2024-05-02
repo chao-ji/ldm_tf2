@@ -20,7 +20,7 @@ Note that the only thing needed (other than tensorflow) is the library [transfor
 
 ### Convert pretrained model to TF2 format
 
-The [official PyTorch implementation](https://github.com/CompVis/latent-diffusion) comes with [pretrained txt2img model](https://ommer-lab.com/files/latent-diffusion/text2img.zip). 
+The [official PyTorch implementation](https://github.com/CompVis/latent-diffusion) comes with [pretrained txt2img model](https://ommer-lab.com/files/latent-diffusion/nitro/txt2img-f8-large/model.ckpt). 
 
 First you need to download and unzip it, and convert it into TF2 format:
 
